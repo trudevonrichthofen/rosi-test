@@ -1,0 +1,22 @@
+package org.rosi.nodes ;
+
+
+import java.util.List ;
+import java.util.ArrayList ;
+
+public class DeviceDefinitionValue extends RosiValue {
+
+   public List<RosiValue> _list = new ArrayList<RosiValue>() ;
+   
+   public DeviceDefinitionValue( String deviceType , String deviceName ){
+   
+   }
+   public void addInfo( RosiValue value ){
+       _list.add( value ) ;
+   }
+   public List<Rosivalue>(){
+       return _list ;
+   }
+
+
+}

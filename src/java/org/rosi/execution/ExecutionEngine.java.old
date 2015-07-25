@@ -1,0 +1,484 @@
+package org.rosi.execution ;
+
+import org.rosi.nodes.* ;
+import org.rosi.util.*;
+import org.rosi.compiler.* ;
+
+import java.io.* ;
+import java.util.* ;
+
+
+
+public class ExecutionEngine {
+
+
+   private Map<String,RosiSensorDevice>   __sensors     = new HashMap<String,RosiSensorDevice>();
+   private Map<String,RosiActorDevice>    __actors      = new HashMap<String,RosiActorDevice>();
+   private Map<String,RosiTriggerDevice>  __triggers    = new HashMap<String,RosiTriggerDevice>();
+   private Map<String,RosiMonoflopDevice> __monoflops   = new HashMap<String,RosiMonoflopDevice>();
+   
+   private Map<String,List<RosiMonoflopDevice>> __targets  = 
+        new HashMap<String,List<RosiMonoflopDevice>>();
+   
+   private Map<String,RosiValue>          __variables   = new HashMap<String,RosiValue>() ;
+   private Map<String,FullTimePatch>      __timePatches = new HashMap<String,FullTimePatch>() ;
+
+   private RosiProgram __masterProgram = null ;
+
+   public ExecutionEngine(  RosiProgram program  ){
+       __masterProgram = program ;
+   }
+   public void setProgram( RosiProgram program ){
+       __masterProgram = program ;
+   }
+   public void prepareExecution() throws Exception {
+
+       collectItems( __masterProgram ) ;
+    
+       setTime( new RosiCalendar() ) ;
+       
+       
+   }
+   public void execute(){
+
+       executeProgram( __masterProgram );
+
+   }
+   public void setTime( RosiCalendar calendar ) throws Exception {
+
+       for( Map.Entry<String,FullTimePatch> entry : __timePatches.entrySet() ){
+     
+           System.out.println("Setting time : "+entry.getKey() + " : "+entry.getValue().contains( calendar ) ) ;
+	   
+       }
+ 
+   }
+   public void setTime()  throws Exception  {
+   
+       setTime( new RosiCalendar() ) ;
+       
+   }
+   private void collectTimePatches( RosiProgram program ){
+ 
+      for( RosiValue value : program.commands() ){
+
+         if( value instanceof RosiAssigment ){
+
+	     RosiAssigment assigment = (RosiAssigment)value ;
+
+	     String variableName = assigment.getVariableName() ;
+
+	     RosiValue right = assigment.getAssigment() ;
+
+	     if( right instanceof FullTimePatch ){
+
+                 __timePatches.put( variableName , (FullTimePatch)right ) ;	    
+
+	     }
+
+	 }
+
+      }
+   }
+   public void showVariables(){
+
+      System.out.println("Sensors") ;
+      for( Map.Entry<String,RosiSensorDevice> entry : __sensors.entrySet() ){
+          System.out.println("   "+entry.getKey().toString() + "\n       "+entry.getValue() ) ;
+      }
+      System.out.println("Actors") ;
+      for( Map.Entry<String,RosiActorDevice> entry : __actors.entrySet() ){
+          System.out.println("   "+entry.getKey().toString() + "\n       "+entry.getValue() ) ;
+      }
+      System.out.println("Triggers") ;
+      for( Map.Entry<String,RosiTriggerDevice> entry : __triggers.entrySet() ){
+          System.out.println("   "+entry.getKey().toString() + "\n       "+entry.getValue() ) ;
+      }
+      System.out.println("Monoflops") ;
+      for( Map.Entry<String,RosiMonoflopDevice> entry : __monoflops.entrySet() ){
+          System.out.println("   "+entry.getKey().toString() + "\n       "+entry.getValue() ) ;
+      }
+      System.out.println("Monoflops Targets") ;
+      for( Map.Entry<String,List<RosiMonoflopDevice>> entry : __targets.entrySet() ){
+      
+          System.out.println("   "+entry.getKey().toString() ) ;
+	  
+	  List<RosiMonoflopDevice> list = entry.getValue() ;
+	  
+	  for( RosiMonoflopDevice node : list ){
+	       
+               System.out.println("       "+node.getDeviceName() ) ;	  
+	  }
+      }
+      
+      System.out.println("Variables");
+      
+      for( Map.Entry<String,RosiValue> entry : __variables.entrySet() ){
+          System.out.println("   "+entry.getKey().toString() + "\n       "+entry.getValue() ) ;
+      }
+
+   }
+   public void setSensor( String sensorName , String sensorValue ) throws IllegalArgumentException {
+   
+       RosiValue value = getSensorValue( sensorName ) ;
+       
+       if( ! ( value instanceof StringValue ) )
+          throw new
+	  IllegalArgumentException("Not a 'string' sensor : "+sensorValue ) ;
+       
+       ((StringValue)value).setValue( sensorValue ) ;
+       
+   }
+   public void setSensor( String sensorName , float sensorValue ) throws IllegalArgumentException {
+	  
+       RosiValue value = getSensorValue( sensorName ) ;
+       
+       if( value instanceof FloatValue ){
+       
+           ((FloatValue)value).setValue( sensorValue ) ;
+       
+       }else{
+       
+          throw new
+	  IllegalArgumentException("Not a 'float' sensor : "+sensorValue ) ;
+	  
+       }
+       
+   }
+   public void setSensor( String sensorName , int sensorValue ) throws IllegalArgumentException {
+	  
+       RosiValue value = getSensorValue( sensorName ) ;
+       
+       if( value instanceof NumberValue ){
+       
+           ((NumberValue)value).setValue( sensorValue ) ;
+       
+       }else if( value instanceof FloatValue ){
+       
+           ((FloatValue)value).setValue( (float)sensorValue ) ;
+       
+       }else{
+       
+          throw new
+	  IllegalArgumentException("Not a 'float' sensor : "+sensorValue ) ;
+	  
+       }
+       
+   }
+   private RosiValue getSensorValue( String sensorName ) throws IllegalArgumentException {
+   
+       RosiSensorDevice device = __sensors.get(sensorName) ;
+       
+       if( device == null )
+          throw new 
+	  IllegalArgumentException( "Sensor not found : "+sensorName ) ;
+	  
+       return device.getValue() ;
+    }
+   private void collectItems( RosiProgram program ){
+ 
+      for( RosiValue value : program.commands() ){
+
+         if( value instanceof RosiAssigment ){
+
+ 	     RosiAssigment assigment = (RosiAssigment)value ;
+
+	     String variableName = assigment.getVariableName() ;
+
+	     RosiValue right = assigment.getAssigment() ;
+
+	     if( right instanceof FullTimePatch ){
+
+                 __timePatches.put( variableName , (FullTimePatch)right ) ;	    
+
+	     }
+
+	 }else if( value instanceof RosiSensorDevice ){
+	 
+	     RosiSensorDevice sensor = (RosiSensorDevice) value ;
+	     
+	     __sensors.put( sensor.getDeviceName() , sensor ) ;
+	     
+	 }else if( value instanceof RosiActorDevice ){
+	 
+	     RosiActorDevice actor = (RosiActorDevice) value ;
+	     
+	     __actors.put( actor.getDeviceName() , actor ) ;
+	     
+	 }else if( value instanceof RosiTriggerDevice ){
+	 
+	     RosiTriggerDevice trigger = (RosiTriggerDevice) value ;
+	     
+	     __triggers.put( trigger.getDeviceName() , trigger ) ;
+	     
+	 }else if( value instanceof RosiMonoflopDevice ){
+	 
+	     RosiMonoflopDevice monoflop = (RosiMonoflopDevice) value ;
+	     
+	     __monoflops.put( monoflop.getDeviceName() , monoflop ) ;
+	     
+	     String target = monoflop.getTargetName();
+	     
+	     List<RosiMonoflopDevice> list = __targets.get( target ) ;
+	     
+	     if( list == null ){
+	         list = new ArrayList<RosiMonoflopDevice>() ;
+		 __targets.put( target , list ) ;
+             }
+	     
+	     list.add( monoflop ) ;
+	     
+	 }
+
+
+      }
+   }
+   private void executeProgram( RosiProgram program ) throws IllegalArgumentException {
+
+	System.out.println("\n---------- Excuting Program -----------");
+
+	long begin = System.currentTimeMillis() ;
+
+	execute( program ) ;
+
+	System.out.println("---------- Finished in "+(System.currentTimeMillis()-begin)+" millis");
+
+   }
+   private void execute( RosiProgram program ) throws IllegalArgumentException {
+
+       for( RosiValue command : program.commands() ){
+
+           if( command instanceof RosiDevice ){
+
+           /*
+	    *  Devices are handled in a different step, prior to execution.
+	    */
+//	       RosiSensorDevice device = (RosiSensorDevice)command ;
+//	       __variables.put( device.getDeviceName() , device.getValue() ) ;
+
+	   }else if( command instanceof RosiAssigment ){
+
+	       RosiAssigment assigment = (RosiAssigment)command ;
+
+	       String leftSideName = assigment.getVariableName() ;
+
+	       RosiValue rightSide = assigment.getAssigment() ;
+
+	       if( rightSide instanceof RosiVectorValue ){
+
+		  RosiVectorValue vector = (RosiVectorValue)rightSide ;
+
+		  if( vector.size() != 1 )
+	             throw new
+		     IllegalArgumentException( "Vector size > 1 not supported.");
+
+		  RosiValue expr = vector.list().get(0) ;
+
+		  if( expr instanceof ExpressionValue ){
+
+	              expr = evaluateExpression( (ExpressionValue) expr ) ;
+
+		  }else if( expr  instanceof FullTimePatch ){
+
+                      expr = new BooleanValue( true ) ;
+                      throw new
+                         IllegalArgumentException("BUG : FillTimePatch shouldn't be in a Vector");
+
+		  }else{
+
+		      expr = resolve( expr ) ;
+
+		  }
+ 
+                  if( __sensors.get( leftSideName ) != null )
+	             throw new
+		     IllegalArgumentException( 
+		         "You can't assign a value to a sensor device! ("+leftSideName+")");
+
+		  __variables.put( leftSideName , expr ) ;
+
+	       }else if( rightSide instanceof FullTimePatch ){
+
+		  __variables.put( leftSideName , new BooleanValue( ((FullTimePatch)rightSide).getValueAsBoolean() ) ) ;
+
+	       }else{
+	          throw new
+		  IllegalArgumentException( 
+		    "BUG : left of assigment is neither a RosiVectorValue nor a Full Time Patch");
+
+	       }
+
+
+	   }else if( command instanceof RosiConditional ){
+
+	       RosiConditional conditional = (RosiConditional)command ;
+
+	       VariableValue condition = conditional.getCondition() ;
+
+	       RosiValue conditionValue = __variables.get( condition.getVariableName() ) ;
+
+	       if(   ( conditionValue == null                 ) || 
+	           ! ( conditionValue instanceof BooleanValue )      )
+		 throw new
+		 IllegalArgumentException(
+	             "Condition variable not found or not of Type Boolean : " +condition.getVariableName()) ;
+
+	       if( ((BooleanValue)conditionValue).getBoolean()  ){	     
+
+		   RosiProgram subProgram = (RosiProgram) conditional.getProgram() ;
+
+	           execute( subProgram ) ;
+
+	       }
+
+	   }
+
+       }
+   }
+   private RosiValue resolve( RosiValue value ){
+
+
+       if( value instanceof ExpressionValue ) {
+
+	   value = evaluateExpression((ExpressionValue)value) ;
+
+       }else if( value instanceof VariableValue ){
+
+	   String variableName = ((VariableValue)value).getVariableName() ;
+
+	   value = __variables.get( variableName ) ;
+
+	   if( value == null )value = __sensors.get( variableName ) ;
+           if( value == null )value = __actors.get( variableName ) ;
+           if( value == null )value = __targets.get( variableName ) ;
+	   if( value == null )
+	       throw new
+               IllegalArgumentException("Can't resolve symbol : "+variableName);
+ 		  
+		  RosiMonoflopDevice monoflop = __monoflops.get( variableName ) ;
+	       
+	   if( value instanceof RosiDataDevice ){
+	   
+	       value = ((RosiDataDevice)value).getValue() ;
+	       
+	   }else if( value instanceof RosiMonoflopDevice ){
+	   
+	   }
+	   
+       }
+
+       return value ;
+   }
+   private RosiValue evaluateExpression( ExpressionValue expr ) throws IllegalArgumentException {
+
+	String operation = expr.getOperation() ;
+
+	RosiValue left  = resolve( expr.left() ) ;
+	RosiValue right = resolve( expr.right() ) ;
+
+	if( operation.equals("|") ){
+
+           return new BooleanValue( left.getValueAsBoolean() || right.getValueAsBoolean() ) ;
+
+	}else if( operation.equals("&") ){
+
+           return new BooleanValue( left.getValueAsBoolean() && right.getValueAsBoolean() ) ;
+
+	}else if( operation.equals("==") ){
+
+           return new BooleanValue( left.compareTo( right ) == 0 ) ;
+
+	}else if( operation.equals("!=") ){
+
+           return new BooleanValue( left.compareTo( right ) != 0 ) ;
+
+	}else if( operation.equals(">") ){
+
+           return new BooleanValue( left.compareTo( right ) > 0 ) ;
+
+	}else if( operation.equals("<") ){
+
+           return new BooleanValue( left.compareTo( right ) < 0 ) ;
+
+	}else if( operation.equals("<=") ){
+
+           return new BooleanValue( left.compareTo( right ) <= 0 ) ;
+
+	}else if( operation.equals(">=") ){
+
+           return new BooleanValue( left.compareTo( right ) >= 0 ) ;
+
+	}else{
+
+           throw new
+	   IllegalArgumentException("Operation not support yet : "+operation ) ;
+
+	}
+
+   }
+   public static void main( String [] args ) throws Exception {
+   
+      if( args.length < 1 ){
+            System.err.println("Usage : ... <RosiLanguageFile> [yyyy/mm/dd-hh:mm[");
+            System.exit(4);
+       }
+       
+       String filename = args[0] ;
+       
+       String timeString = args.length > 1 ? args[1] : null ;
+       
+       File file = new File( filename ) ;
+       
+       if( ! file.exists() ){
+            System.err.println("File not found : "+filename);
+            System.exit(4);
+       }
+
+       System.out.println("Processing Rosi File : "+filename);
+
+       StringBuffer   sb     = new StringBuffer() ;
+       String         input  = null ;
+
+       BufferedReader reader = new BufferedReader( new FileReader( file ) ) ;
+
+       while( ( input = reader.readLine() ) != null ){
+         sb.append( input ).append("\n");
+       }
+      try{
+	 RosiCompiler compiler = new RosiCompiler() ;
+
+	 RosiProgram  program  = compiler.compile( sb.toString() ) ;
+
+	 System.out.println( program.toString() ) ;
+
+	 ExecutionEngine execution = new ExecutionEngine( program ) ;
+
+	 try{
+
+	    execution.prepareExecution() ;
+
+	    if( timeString != null )execution.setTime( new RosiCalendar( timeString ) ) ;
+
+	    execution.setSensor( "sensor.livingroom.door" , "open" ) ;
+
+	    execution.execute() ;
+	    
+	 }catch(Exception ee ){
+
+            System.out.println("Execution error : "+ee.getMessage());
+	    throw ee ;
+	 }
+
+         execution.showVariables() ;
+
+      }catch(Exception  eea ){
+         System.out.println("Error: "+eea.getMessage());
+         System.exit(1);
+      }
+      
+      System.exit(0);
+
+   }
+   
+   
+}
