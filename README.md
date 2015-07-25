@@ -1,2 +1,3 @@
 # rosi-test
-Remove Operating System Interface
+Remote Operating System Interface
+ROSI manages your Home Automazation System
